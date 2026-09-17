@@ -53,6 +53,19 @@ class WalletRepositoryImpl(
         }
     }
 
+    override suspend fun addDiamonds(amount: Int) {
+        when (val session = sessionManager.currentSession) {
+            is UserSession.Authenticated ->
+                firestoreWallet.addDiamonds(
+                    session.firebaseUid,
+                    amount
+                )
+
+            UserSession.Guest ->
+                guestWallet.addDiamonds(amount)
+        }
+    }
+
     override suspend fun getRedeemStatus(): RedeemStatus {
         return when (val session = sessionManager.currentSession) {
             is UserSession.Authenticated ->

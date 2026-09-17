@@ -55,6 +55,14 @@ class CoinWalletDataStore(private val context: Context) : WalletRepository {
         }
     }
 
+    override suspend fun addDiamonds(amount: Int) {
+        if (amount <= 0) return
+
+        context.walletDataStore.edit { prefs ->
+            prefs[DIAMONDS] = (prefs[DIAMONDS] ?: 0) + amount
+        }
+    }
+
     override suspend fun getRedeemStatus(): RedeemStatus {
         val prefs = context.walletDataStore.data.first()
         val activeTimestamps = parseTimestamps(prefs[REDEEM_TIMESTAMPS]).filterActive()
@@ -80,7 +88,8 @@ class CoinWalletDataStore(private val context: Context) : WalletRepository {
             val currentCoins = prefs[COINS] ?: 0
             val activeTimestamps = parseTimestamps(prefs[REDEEM_TIMESTAMPS]).filterActive()
 
-
+            // Expired stamps are pruned whatever the outcome, so a failed
+            // redeem can't leave a stale one holding the daily slot.
             prefs[REDEEM_TIMESTAMPS] = activeTimestamps.joinToString(",")
 
             result = when {

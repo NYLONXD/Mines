@@ -8,7 +8,7 @@ val deepOceanTheme = BoardThemeItem(
     id = "board_deep_ocean",
     name = "Deep Ocean",
     description = "A cool blue palette for the board and cells.",
-    price = 150,
+    price = 10,
     previewColorHex = listOf(
         "#1B4B66",
         "#7FC7E8"

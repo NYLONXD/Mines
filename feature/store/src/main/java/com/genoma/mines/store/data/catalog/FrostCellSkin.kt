@@ -11,5 +11,5 @@ val frostCellSkin = CellSkinItem(
     id = "cellskin_frost",
     name = "Frost Cells",
     description = "A frosted-glass look for revealed numbers and mines.",
-    price = 300
+    price = 20
 )

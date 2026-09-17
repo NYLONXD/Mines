@@ -49,6 +49,15 @@ class FirestoreWalletRepository(
         ).await()
     }
 
+    suspend fun addDiamonds(uid: String, amount: Int) {
+        if (amount <= 0) return
+
+        userDoc(uid).set(
+            mapOf("diamonds" to FieldValue.increment(amount.toLong())),
+            SetOptions.merge()
+        ).await()
+    }
+
     suspend fun getRedeemStatus(uid: String): RedeemStatus {
         val snapshot = userDoc(uid).get(Source.SERVER).await()
 

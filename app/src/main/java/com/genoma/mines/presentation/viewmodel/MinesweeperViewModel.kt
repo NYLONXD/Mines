@@ -60,7 +60,16 @@ class MinesweeperViewModel(
     private companion object {
         /** A game that runs this long auto-quits back to the home screen. */
         const val MAX_GAME_DURATION_SECONDS = 30 * 60
-        const val COIN_REWARD_PER_WIN = 100
+
+        /**
+         * Coins paid for a win, scaled by board difficulty so that clearing a
+         * denser board is worth more than grinding the easiest one.
+         */
+        fun coinRewardFor(difficulty: Difficulty): Int = when (difficulty) {
+            Difficulty.EASY -> 50
+            Difficulty.MEDIUM -> 100
+            Difficulty.HARD -> 200
+        }
     }
 
     private var game: MinesweeperGame? = null
@@ -276,24 +285,51 @@ class MinesweeperViewModel(
 
     fun purchaseOrEquipStoreItem(item: StoreItem) {
         viewModelScope.launch {
-            val owned = item.price == 0 || storeDataStore.isOwned(item.id)
-
-            if (!owned) {
-                val result = wallet.spendDiamonds(item.price)
-                if (!result.success) {
-                    _redeemResultMessage.value = result.message
-                    return@launch
-                }
-                storeDataStore.addOwnedItem(item.id)
+            val owned = try {
+                item.price == 0 || storeDataStore.isOwned(item.id)
+            } catch (_: Exception) {
+                _redeemResultMessage.value = "Couldn't reach the store. Check your connection and try again."
+                return@launch
             }
 
-            when (item) {
-                is com.genoma.mines.store.domain.BoardThemeItem -> storeDataStore.equipBoardTheme(item.id)
-                is com.genoma.mines.store.domain.CellSkinItem -> storeDataStore.equipCellSkin(item.id)
-                is com.genoma.mines.store.domain.AvatarStoreItem -> {
-                    // Avatar artwork is not yet part of AvatarOption. Ownership is
-                    // still saved, but no fake visual mapping is introduced.
+            if (!owned) {
+                val result = try {
+                    wallet.spendDiamonds(item.price)
+                } catch (_: Exception) {
+                    _redeemResultMessage.value = "Couldn't complete the purchase. Check your connection and try again."
+                    return@launch
                 }
+
+                if (!result.success) {
+                    _redeemResultMessage.value =
+                        "You need ${item.price} gems to buy ${item.name}."
+                    return@launch
+                }
+
+                try {
+                    storeDataStore.addOwnedItem(item.id)
+                } catch (_: Exception) {
+                    // The gems are already spent, so hand them back rather than
+                    // charging for an item the player never received.
+                    runCatching { wallet.addDiamonds(item.price) }
+                    _redeemResultMessage.value = "Couldn't complete the purchase. Your gems were not charged."
+                    return@launch
+                }
+            }
+
+            // The item is owned at this point either way, so a failure to equip
+            // is only worth a message — it isn't worth undoing the purchase.
+            try {
+                when (item) {
+                    is com.genoma.mines.store.domain.BoardThemeItem -> storeDataStore.equipBoardTheme(item.id)
+                    is com.genoma.mines.store.domain.CellSkinItem -> storeDataStore.equipCellSkin(item.id)
+                    is com.genoma.mines.store.domain.AvatarStoreItem -> {
+                        // Avatar artwork is not yet part of AvatarOption. Ownership is
+                        // still saved, but no fake visual mapping is introduced.
+                    }
+                }
+            } catch (_: Exception) {
+                _redeemResultMessage.value = "${item.name} is yours, but couldn't be applied. Tap it again."
             }
         }
     }
@@ -506,7 +542,7 @@ class MinesweeperViewModel(
 
         if (result == GameResultType.WIN) {
             viewModelScope.launch {
-                wallet.addCoins(COIN_REWARD_PER_WIN)
+                wallet.addCoins(coinRewardFor(state.difficulty))
             }
 
             // Winning keeps the heart that was spent to start this game.
@@ -725,27 +761,49 @@ class MinesweeperViewModel(
         _showHeartsDialog.value = false
     }
 
-    /** Spends [LifeRules.REFILL_COST_DIAMONDS] gems to top hearts back up to full. */
+    /**
+     * Buys the hearts the player is actually missing, at
+     * [LifeRules.DIAMONDS_PER_HEART] gems each.
+     *
+     * The price is read off the same status the refill is applied to, so a
+     * heart that regenerates mid-purchase can never be charged for.
+     */
     fun refillHearts() {
         if (_isRefillingHearts.value) return
         _isRefillingHearts.value = true
 
         viewModelScope.launch {
+            var cost = 0
+
             try {
-                if (lives.getStatus().isFull) {
+                val status = lives.getStatus()
+                if (status.isFull) {
                     _redeemResultMessage.value = "Your hearts are already full."
                     return@launch
                 }
 
-                val payment = wallet.spendDiamonds(LifeRules.REFILL_COST_DIAMONDS)
+                val missing = status.maxHearts - status.hearts
+                cost = LifeRules.refillCost(status.hearts)
+
+                val payment = wallet.spendDiamonds(cost)
                 if (!payment.success) {
                     _redeemResultMessage.value =
-                        "You need ${LifeRules.REFILL_COST_DIAMONDS} gems to refill your hearts."
+                        "You need $cost gems to refill $missing " +
+                                if (missing == 1) "heart." else "hearts."
                     return@launch
                 }
 
-                lives.refillHearts()
-                _redeemResultMessage.value = "Hearts refilled!"
+                try {
+                    lives.refillHearts()
+                } catch (e: Exception) {
+                    // The gems are already gone, so hand them back rather than
+                    // charging for hearts the player never received.
+                    wallet.addDiamonds(cost)
+                    throw e
+                }
+
+                _redeemResultMessage.value =
+                    if (missing == 1) "1 heart refilled!" else "$missing hearts refilled!"
                 _showHeartsDialog.value = false
             } catch (_: Exception) {
                 _redeemResultMessage.value = "Couldn't refill hearts. Check your connection and try again."

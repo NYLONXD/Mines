@@ -9,4 +9,7 @@ interface WalletRepository {
     suspend fun redeemDiamond(): RedeemResult
 
     suspend fun spendDiamonds(amount: Int): RedeemResult
+
+    /** Returns diamonds to the balance, e.g. refunding a purchase that failed. */
+    suspend fun addDiamonds(amount: Int)
 }

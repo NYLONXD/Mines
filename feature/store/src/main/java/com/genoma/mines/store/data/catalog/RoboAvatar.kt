@@ -9,5 +9,5 @@ val roboAvatar = AvatarStoreItem(
     id = "avatar_robo",
     name = "Robo",
     description = "A robot avatar for your profile.",
-    price = 250
+    price = 15
 )

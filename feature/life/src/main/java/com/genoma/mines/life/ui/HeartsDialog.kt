@@ -38,8 +38,9 @@ fun HeartsDialog(
     isRefilling: Boolean,
     onRefill: () -> Unit,
     onDismiss: () -> Unit,
-    refillCost: Int = LifeRules.REFILL_COST_DIAMONDS
+    refillCost: Int = LifeRules.refillCost(status.hearts)
 ) {
+    val missingHearts = (status.maxHearts - status.hearts).coerceAtLeast(0)
     val canAfford = diamondBalance >= refillCost
     val nextHeartAt = status.nextHeartAtMillis
 
@@ -87,7 +88,8 @@ fun HeartsDialog(
 
                 if (!status.isFull) {
                     Text(
-                        text = "You have $diamondBalance gems.",
+                        text = "You have $diamondBalance gems. " +
+                            "${LifeRules.DIAMONDS_PER_HEART} gems per heart.",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (canAfford) {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -119,7 +121,8 @@ fun HeartsDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (canAfford) {
-                                "Refill for $refillCost"
+                                if (missingHearts == 1) "Refill 1 heart for $refillCost"
+                                else "Refill $missingHearts hearts for $refillCost"
                             } else {
                                 "Need $refillCost gems"
                             }
